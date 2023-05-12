@@ -1,6 +1,7 @@
 # wayland_plotter
 Simple serial plotter using Wayland 
 Created by BingAI 
+
 Okay, I will try to explain the code. The code is divided into several functions, each with a specific purpose. Here is a brief overview of each function:
 
 - serial_init: This function opens the serial port and sets its attributes, such as baud rate, character size, parity, etc. It returns 0 on success or -1 on failure.
