@@ -1,0 +1,118 @@
+// A global variable to store the semaphore for the csv data
+sem_t csv_data_sem;
+
+// A function to parse a csv line and store the data in the global array
+int csv_parse_line(char *line) {
+    // Wait for the semaphore to be available
+    sem_wait(&csv_data_sem);
+
+    // Allocate memory for a new csv data struct
+    csv_data_t *data = malloc(sizeof(csv_data_t));
+    if (data == NULL) {
+        perror("malloc");
+        sem_post(&csv_data_sem);
+        return -1;
+    }
+
+    // Scan the line for two double values separated by a comma
+    if (sscanf(line, "%lf,%lf", &data->x, &data->y) != 2) {
+        fprintf(stderr, "Invalid csv format: %s\n", line);
+        free(data);
+        sem_post(&csv_data_sem);
+        return -1;
+    }
+
+    // Reallocate memory for the global csv data array to fit the new data
+    csv_data = realloc(csv_data, sizeof(csv_data_t) * (csv_data_size + 1));
+    if (csv_data == NULL) {
+        perror("realloc");
+        free(data);
+        sem_post(&csv_data_sem);
+        return -1;
+    }
+
+    // Store the new data in the global array and increment the size
+    csv_data[csv_data_size] = *data;
+    csv_data_size++;
+
+    // Free the temporary data struct
+    free(data);
+
+    // Post the semaphore to signal availability
+    sem_post(&csv_data_sem);
+
+    return 0;
+}
+
+// A function to draw a graph on a cairo surface from the csv data
+void draw_graph(cairo_surface_t *surface) {
+    // Wait for the semaphore to be available
+    sem_wait(&csv_data_sem);
+
+    // Make a copy of the global csv data array and size
+    csv_data_t *data_copy = malloc(sizeof(csv_data_t) * csv_data_size);
+    if (data_copy == NULL) {
+        perror("malloc");
+        sem_post(&csv_data_sem);
+        return;
+    }
+    memcpy(data_copy, csv_data, sizeof(csv_data_t) * csv_data_size);
+    int data_size_copy = csv_data_size;
+
+    // Post the semaphore to signal availability
+    sem_post(&csv_data_sem);
+
+    // Create a cairo context from the surface
+    cairo_t *cr = cairo_create(surface);
+
+    // Clear the surface with white color
+    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    cairo_paint(cr);
+
+    // Set the line width and color for the graph
+    cairo_set_line_width(cr, 2.0);
+    cairo_set_source_rgb(cr, 1.0, 0.0, 0.0); // red
+
+    // Find the minimum and maximum x and y values in the data copy
+    double min_x = data_copy[0].x;
+    double max_x = data_copy[0].x;
+    double min_y = data_copy[0].y;
+    double max_y = data_copy[0].y;
+    for (int i = 1; i < data_size_copy; i++) {
+        if (data_copy[i].x < min_x) {
+            min_x = data_copy[i].x;
+        }
+        if (data_copy[i].x > max_x) {
+            max_x = data_copy[i].x;
+        }
+        if (data_copy[i].y < min_y) {
+            min_y = data_copy[i].y;
+        }
+        if (data_copy[i].y > max_y) {
+            max_y = data_copy[i].y;
+        }
+    }
+
+    // Calculate the scale and offset factors for the x and y axes
+    double scale_x = (GRAPH_WIDTH - 2 * GRAPH_MARGIN) / (max_x - min_x);
+    double offset_x = GRAPH_MARGIN - min_x * scale_x;
+    double scale_y = (GRAPH_HEIGHT - 2 * GRAPH_MARGIN) / (max_y - min_y);
+    double offset_y = GRAPH_MARGIN - min_y * scale_y;
+
+    // Move to the first point in the data copy
+    cairo_move_to(cr, data_copy[0].x * scale_x + offset_x, data_copy[0].y * scale_y + offset_y);
+
+    // Loop through the rest of the data copy and draw lines to each point
+    for (int i = 1; i < data_size_copy; i++) {
+        cairo_line_to(cr, data_copy[i].x * scale_x + offset_x, data_copy[i].y * scale_y + offset_y);
+    }
+
+    // Stroke the graph
+    cairo_stroke(cr);
+
+    // Destroy the cairo context
+    cairo_destroy(cr);
+
+    // Free the data copy
+    free(data_copy);
+}
